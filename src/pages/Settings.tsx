@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Settings as SettingsIcon, Bell, Globe, Moon, Sun, UserCheck, ShieldAlert } from 'lucide-react';
 import { RootState } from '../redux/store';
 import { updateSettings, addNotification } from '../redux/slices/uiSlice';
+import { getDisplayNameFromEmail } from '../redux/slices/authSlice';
 import Card from '../components/Card';
 import Input from '../components/Input';
 import Dropdown from '../components/Dropdown';
@@ -11,12 +12,20 @@ import Button from '../components/Button';
 export const Settings: React.FC = () => {
   const dispatch = useDispatch();
   const currentSettings = useSelector((state: RootState) => state.ui.settings);
+  const user = useSelector((state: RootState) => state.auth.user);
 
-  const [profileName, setProfileName] = useState(currentSettings.repName);
-  const [profileEmail, setProfileEmail] = useState(currentSettings.repEmail);
+  const [profileName, setProfileName] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState(currentSettings.language);
   const [notifsEnabled, setNotifsEnabled] = useState(currentSettings.notificationsEnabled);
   const [emailAlerts, setEmailAlerts] = useState(currentSettings.emailAlerts);
+
+  useEffect(() => {
+    if (user) {
+      setProfileName(getDisplayNameFromEmail(user.email));
+      setProfileEmail(user.email);
+    }
+  }, [user]);
 
   const languages = [
     { value: 'English', label: 'English (US/UK)' },
@@ -31,11 +40,6 @@ export const Settings: React.FC = () => {
       repName: profileName,
       repEmail: profileEmail,
     }));
-    dispatch(addNotification({
-      title: 'Profile Updated',
-      message: 'Your personal information has been updated successfully.',
-      type: 'success',
-    }));
   };
 
   const handleSavePreferences = () => {
@@ -44,21 +48,11 @@ export const Settings: React.FC = () => {
       notificationsEnabled: notifsEnabled,
       emailAlerts: emailAlerts,
     }));
-    dispatch(addNotification({
-      title: 'Preferences Saved',
-      message: 'System settings have been updated.',
-      type: 'success',
-    }));
   };
 
   const toggleTheme = () => {
     const nextTheme = currentSettings.theme === 'light' ? 'dark' : 'light';
     dispatch(updateSettings({ theme: nextTheme }));
-    dispatch(addNotification({
-      title: 'Theme Toggled',
-      message: `Switched application styling to ${nextTheme} mode.`,
-      type: 'info',
-    }));
   };
 
   return (

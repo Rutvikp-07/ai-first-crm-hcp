@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { Activity, Pill, Clock, ArrowLeft, Edit3, MessageSquare, History } from 'lucide-react';
-import { RootState } from '../redux/store';
-import { selectHcp, addHcp } from '../redux/slices/hcpSlice';
-import { updateDraftField } from '../redux/slices/interactionSlice';
+import { Pill, Clock, ArrowLeft, History, Loader2 } from 'lucide-react';
+import { RootState, AppDispatch } from '../redux/store';
+import { selectHcp, fetchHcpsThunk, updateHcpThunk, deleteHcpThunk } from '../redux/slices/hcpSlice';
+import { updateDraftField, fetchInteractionsThunk, fetchInteractionByIdThunk } from '../redux/slices/interactionSlice';
 import DoctorCard from '../components/DoctorCard';
 import TimelineItem from '../components/TimelineItem';
 import Card from '../components/Card';
@@ -12,19 +12,38 @@ import Badge from '../components/Badge';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
-import Dropdown from '../components/Dropdown';
+import InteractionDetailModal from '../components/InteractionDetailModal';
+import { Interaction } from '../types';
 import { addNotification } from '../redux/slices/uiSlice';
 
 export const HcpDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
 
   const hcps = useSelector((state: RootState) => state.hcp.list);
   const selectedHcp = useSelector((state: RootState) => state.hcp.selectedHcp);
   const interactions = useSelector((state: RootState) => state.interaction.list);
+  const hcpLoading = useSelector((state: RootState) => state.hcp.isLoading);
+  const interactionLoading = useSelector((state: RootState) => state.interaction.isLoading);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+
+  const [selectedDetailsInt, setSelectedDetailsInt] = useState<Interaction | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+
+  const handleViewDetails = async (id: string) => {
+    try {
+      const result = await dispatch(fetchInteractionByIdThunk(id)).unwrap();
+      setSelectedDetailsInt(result);
+      setIsDetailsModalOpen(true);
+    } catch (err: any) {
+      alert(err.message || 'Failed to retrieve interaction details');
+    }
+  };
+
   const [editData, setEditData] = useState({
     name: '',
     specialization: '',
@@ -36,12 +55,17 @@ export const HcpDetails: React.FC = () => {
     notes: '',
   });
 
-  // Sync selected doctor from route param
+  // Sync selected doctor from route param and load records on mount
   useEffect(() => {
-    if (id) {
+    dispatch(fetchHcpsThunk());
+    dispatch(fetchInteractionsThunk());
+  }, [dispatch]);
+
+  useEffect(() => {
+    if (id && hcps.length > 0) {
       dispatch(selectHcp(id));
     }
-  }, [id, dispatch]);
+  }, [id, hcps, dispatch]);
 
   // Sync edit form data
   useEffect(() => {
@@ -50,27 +74,54 @@ export const HcpDetails: React.FC = () => {
         name: selectedHcp.name,
         specialization: selectedHcp.specialization,
         hospital: selectedHcp.hospital,
-        city: selectedHcp.city,
-        email: selectedHcp.email,
-        phone: selectedHcp.phone,
+        city: selectedHcp.city || '',
+        email: selectedHcp.email || '',
+        phone: selectedHcp.phone || '',
         status: selectedHcp.status,
         notes: selectedHcp.notes || '',
       });
     }
   }, [selectedHcp]);
 
+  if (hcpLoading && hcps.length === 0) {
+    return (
+      <div className="py-12 text-center flex flex-col items-center justify-center gap-3">
+        <Loader2 className="h-8 w-8 text-brand-500 animate-spin" />
+        <span className="text-xs font-semibold text-slate-400">Loading doctor details...</span>
+      </div>
+    );
+  }
+
   if (!selectedHcp) {
     return (
-      <div className="py-12 text-center text-slate-400 font-semibold select-none">
+      <div className="py-12 text-center text-slate-450 text-slate-400 font-semibold select-none">
         Doctor Profile Not Found.
       </div>
     );
   }
 
-  // Filter interactions for this doctor
-  const doctorInteractions = interactions.filter((i) => i.hcpId === selectedHcp.id);
-
-  // Extract products discussed based on topic names or hardcoded list for realism
+  // Filter interactions for this doctor and sort by date DESC, then ID DESC
+  const doctorInteractions = interactions
+    .filter((i) => String(i.hcpId) === String(selectedHcp.id))
+    .sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateA !== dateB) {
+        return dateB - dateA;
+      }
+      return Number(b.id) - Number(a.id);
+    });
+ 
+  // Compute dynamic last interaction date for this doctor contact
+  const sortedInts = [...doctorInteractions];
+  const lastContactDate = sortedInts.length > 0 ? sortedInts[0].date : 'No Interactions Yet';
+ 
+  const doctorWithLiveDate = {
+    ...selectedHcp,
+    lastInteraction: lastContactDate
+  };
+ 
+  // Extract products discussed based on topic names
   const productsDiscussed = Array.from(
     new Set(
       doctorInteractions.flatMap((i) =>
@@ -80,28 +131,67 @@ export const HcpDetails: React.FC = () => {
       )
     )
   );
-
+ 
   const handleLogInteractionClick = () => {
-    // Populate draft state with selected doctor information
     dispatch(updateDraftField({ field: 'hcpId', value: selectedHcp.id }));
     dispatch(updateDraftField({ field: 'hcpName', value: selectedHcp.name }));
     navigate('/log-interaction');
   };
-
-  const handleEditSubmit = (e: React.FormEvent) => {
+ 
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // In our local store, since we don't have direct "update" in slices yet, we can mock update
-    // or just trigger success message. Let's make an update action in hcpSlice.
-    // However, to keep it simple, we can display success notification. We will also add
-    // code edit to hcpSlice if we want it to persist. Let's assume we dispatch a success notification.
-    dispatch(addNotification({
-      title: 'Profile Updated',
-      message: `${editData.name}'s profile details updated successfully.`,
-      type: 'success',
-    }));
-    
-    setIsEditModalOpen(false);
+    setIsSubmitting(true);
+    setApiError(null);
+ 
+    try {
+      await dispatch(updateHcpThunk({
+        id: selectedHcp.id,
+        data: {
+          name: editData.name,
+          specialization: editData.specialization,
+          hospital: editData.hospital,
+          city: editData.city,
+          email: editData.email,
+          phone: editData.phone,
+          status: editData.status,
+        }
+      })).unwrap();
+ 
+      setIsEditModalOpen(false);
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      let errorMsg = 'Failed to update Healthcare Professional details.';
+      if (typeof detail === 'string') {
+        errorMsg = detail;
+      } else if (Array.isArray(detail)) {
+        errorMsg = detail.map(d => d.msg).join(', ');
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      setApiError(errorMsg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteClick = async () => {
+    if (window.confirm(`Are you sure you want to permanently delete the profile for ${selectedHcp.name}?`)) {
+      setIsSubmitting(true);
+      try {
+        await dispatch(deleteHcpThunk(selectedHcp.id)).unwrap();
+        dispatch(addNotification({
+          title: 'Doctor Profile Removed',
+          message: `${selectedHcp.name} was removed from PharmaFlow.`,
+          type: 'warning',
+        }));
+        setIsEditModalOpen(false);
+        navigate('/hcps');
+      } catch (err: any) {
+        alert(err.message || 'Failed to delete Healthcare Professional');
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
   };
 
   return (
@@ -110,7 +200,7 @@ export const HcpDetails: React.FC = () => {
       <div>
         <button
           onClick={() => navigate('/hcps')}
-          className="flex items-center gap-1.5 text-xs font-semibold text-slate-555 text-slate-500 hover:text-brand-500 transition-colors"
+          className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-brand-500 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Doctors List
@@ -119,7 +209,7 @@ export const HcpDetails: React.FC = () => {
 
       {/* Profile Header */}
       <DoctorCard
-        doctor={selectedHcp}
+        doctor={doctorWithLiveDate}
         onEdit={() => setIsEditModalOpen(true)}
         onLogInteraction={handleLogInteractionClick}
       />
@@ -134,13 +224,17 @@ export const HcpDetails: React.FC = () => {
               Interaction History timeline ({doctorInteractions.length})
             </h3>
 
-            {doctorInteractions.length > 0 ? (
+            {interactionLoading && doctorInteractions.length === 0 ? (
+              <div className="py-12 flex justify-center">
+                <Loader2 className="h-6 w-6 text-brand-500 animate-spin" />
+              </div>
+            ) : doctorInteractions.length > 0 ? (
               <div className="flex flex-col">
                 {doctorInteractions.map((item) => (
                   <TimelineItem
                     key={item.id}
                     interaction={item}
-                    onClickDetails={() => {}}
+                    onClickDetails={() => handleViewDetails(item.id)}
                   />
                 ))}
               </div>
@@ -166,7 +260,7 @@ export const HcpDetails: React.FC = () => {
                 {productsDiscussed.map((prod, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between p-3 border border-slate-100 bg-slate-50/20 rounded-lg"
+                    className="flex items-center justify-between p-3 border border-slate-100 bg-slate-55/10 bg-slate-50/20 rounded-lg"
                   >
                     <span className="text-xs font-bold text-slate-700">{prod}</span>
                     <Badge variant="primary" className="text-[9px]">Discussed</Badge>
@@ -190,13 +284,13 @@ export const HcpDetails: React.FC = () => {
             <div className="flex flex-col gap-3">
               {doctorInteractions.some(i => i.followUpActions) ? (
                 doctorInteractions
-                  .filter(i => i.followUpActions)
+                  .filter(i => i.followUpActions && i.followUpActions.trim())
                   .map((i, idx) => (
                     <div
                       key={idx}
                       className="p-3 border border-slate-100 bg-amber-50/10 rounded-lg flex flex-col gap-1"
                     >
-                      <span className="text-[10px] font-semibold text-slate-400">{i.date} follow-up</span>
+                      <span className="text-[10px] font-semibold text-slate-450 text-slate-400">{i.date} follow-up</span>
                       <p className="text-xs text-slate-600 leading-relaxed">{i.followUpActions}</p>
                     </div>
                   ))
@@ -216,17 +310,34 @@ export const HcpDetails: React.FC = () => {
         onClose={() => setIsEditModalOpen(false)}
         title={`Edit Profile: ${selectedHcp.name}`}
         footer={
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setIsEditModalOpen(false)}>
-              Cancel
+          <div className="flex justify-between items-center gap-2 w-full">
+            <Button
+              variant="ghost"
+              className="text-rose-600 hover:bg-rose-50 font-semibold"
+              size="sm"
+              onClick={handleDeleteClick}
+              disabled={isSubmitting}
+            >
+              Delete Doctor
             </Button>
-            <Button size="sm" onClick={handleEditSubmit}>
-              Save Changes
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setIsEditModalOpen(false)} disabled={isSubmitting}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleEditSubmit} isLoading={isSubmitting}>
+                Save Changes
+              </Button>
+            </div>
           </div>
         }
       >
         <form onSubmit={handleEditSubmit} className="flex flex-col gap-4">
+          {apiError && (
+            <div className="p-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-lg text-xs font-semibold">
+              {apiError}
+            </div>
+          )}
+
           <Input
             label="Doctor Name"
             value={editData.name}
@@ -271,7 +382,7 @@ export const HcpDetails: React.FC = () => {
             <label className="text-xs font-semibold text-slate-700">Account Status</label>
             <div className="flex gap-4">
               {['Active', 'Pending', 'Inactive'].map((st) => (
-                <label key={st} className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-655 text-slate-600">
+                <label key={st} className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-600">
                   <input
                     type="radio"
                     name="edit-status"
@@ -295,6 +406,15 @@ export const HcpDetails: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      <InteractionDetailModal
+        isOpen={isDetailsModalOpen}
+        onClose={() => {
+          setIsDetailsModalOpen(false);
+          setSelectedDetailsInt(null);
+        }}
+        interaction={selectedDetailsInt}
+      />
     </div>
   );
 };

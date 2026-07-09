@@ -7,11 +7,13 @@ import Card from './Card';
 interface TimelineItemProps {
   interaction: Interaction;
   onClickDetails?: () => void;
+  isNew?: boolean;
 }
 
 export const TimelineItem: React.FC<TimelineItemProps> = ({
   interaction,
   onClickDetails,
+  isNew = false,
 }) => {
   const getIcon = (type: string) => {
     switch (type) {
@@ -40,7 +42,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   };
 
   return (
-    <div className="relative pl-8 pb-8 group last:pb-0">
+    <div id={`int-${interaction.id}`} className="relative pl-8 pb-8 group last:pb-0">
       {/* Connector Line */}
       <div className="absolute left-[15px] top-8 bottom-0 w-0.5 bg-slate-100 group-last:hidden" />
 
@@ -50,9 +52,12 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
       </div>
 
       {/* Box Panel */}
-      <Card hoverable className="p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer" onClick={onClickDetails}>
+      <Card hoverable className={`p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer transition-all duration-500 ${isNew ? 'animate-new-highlight border-emerald-400 bg-emerald-50/10 shadow-sm' : ''}`} onClick={onClickDetails}>
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            {isNew && (
+              <span className="text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-250 px-1.5 py-0.5 rounded-md animate-pulse">New</span>
+            )}
             <span className="text-xs text-slate-450 font-medium">{interaction.date} • {interaction.time}</span>
             <Badge variant={getSentimentVariant(interaction.sentiment)}>
               {interaction.sentiment}

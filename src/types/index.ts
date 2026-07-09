@@ -42,6 +42,31 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   typing?: boolean;
+  isAiCard?: boolean;
+  aiCardData?: {
+    success: boolean;
+    doctorName?: string;
+    hospital?: string;
+    interactionType?: string;
+    meetingDate?: string;
+    sentiment?: string;
+    topics?: string[];
+    materialsShared?: string[];
+    samplesDistributed?: { productName: string; quantity: number }[];
+    outcome?: string;
+    followUpActions?: string;
+    followUpActionsList?: string[];
+    confidenceIndicators?: {
+      doctorIdentified: boolean;
+      emailMatched: boolean;
+      hcpFoundInCrm: boolean;
+      interactionLogged: boolean;
+      sentimentDetected: boolean;
+    };
+    errorMsg?: string;
+    missingEmail?: string;
+    multipleMatches?: { id: string; name: string; email: string; hospital: string }[];
+  };
 }
 
 export interface Product {

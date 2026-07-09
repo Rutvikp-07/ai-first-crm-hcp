@@ -3,6 +3,7 @@ import hcpReducer from './slices/hcpSlice';
 import interactionReducer from './slices/interactionSlice';
 import chatReducer from './slices/chatSlice';
 import uiReducer from './slices/uiSlice';
+import authReducer from './slices/authSlice';
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     interaction: interactionReducer,
     chat: chatReducer,
     ui: uiReducer,
+    auth: authReducer,
   },
 });
 

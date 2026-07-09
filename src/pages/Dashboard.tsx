@@ -1,69 +1,98 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
-import { Users, FileText, CheckSquare, Smile, Calendar, Plus, ExternalLink, Activity } from 'lucide-react';
-import { RootState } from '../redux/store';
+import { useSelector, useDispatch } from 'react-redux';
+import { Users, FileText, CheckSquare, Calendar, Plus, ExternalLink, Activity, Sparkles, Loader2 } from 'lucide-react';
+import { RootState, AppDispatch } from '../redux/store';
+import { fetchHcpsThunk } from '../redux/slices/hcpSlice';
+import { fetchInteractionsThunk, fetchInteractionByIdThunk } from '../redux/slices/interactionSlice';
+import { getDisplayNameFromEmail } from '../redux/slices/authSlice';
 import StatCard from '../components/StatCard';
 import TimelineItem from '../components/TimelineItem';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import Avatar from '../components/Avatar';
 import Button from '../components/Button';
+import InteractionDetailModal from '../components/InteractionDetailModal';
+import { Interaction } from '../types';
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const hcps = useSelector((state: RootState) => state.hcp.list);
-  const interactions = useSelector((state: RootState) => state.interaction.list);
+  const dispatch = useDispatch<AppDispatch>();
+
+  const { list: hcps, isLoading: hcpLoading } = useSelector((state: RootState) => state.hcp);
+  const { list: interactions, isLoading: interactionLoading } = useSelector((state: RootState) => state.interaction);
+  const processedNotesCount = useSelector((state: RootState) => state.chat.processedNotesCount);
+  const user = useSelector((state: RootState) => state.auth.user);
+
+  const [selectedDetailsInt, setSelectedDetailsInt] = useState<Interaction | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+
+  const userFirstName = user ? getDisplayNameFromEmail(user.email).split(' ')[0] : 'Representative';
+
+  useEffect(() => {
+    dispatch(fetchHcpsThunk());
+    dispatch(fetchInteractionsThunk());
+  }, [dispatch]);
+
+  const handleViewDetails = async (id: string) => {
+    try {
+      const result = await dispatch(fetchInteractionByIdThunk(id)).unwrap();
+      setSelectedDetailsInt(result);
+      setIsDetailsModalOpen(true);
+    } catch (err: any) {
+      alert(err.message || 'Failed to retrieve interaction details');
+    }
+  };
+
+  // Loading state handling
+  const isLoading = hcpLoading || interactionLoading;
 
   // Stats calculation
   const totalHcps = hcps.length;
   const totalInteractions = interactions.length;
-  const positiveSentimentCount = interactions.filter(i => i.sentiment === 'Positive').length;
-  const positiveSentimentRate = totalInteractions > 0 
-    ? Math.round((positiveSentimentCount / totalInteractions) * 100) 
-    : 100;
 
-  const todayMeetings = [
-    {
-      id: 'meet-1',
-      hcpName: 'Dr. Ramesh Sharma',
-      specialty: 'Cardiology',
-      time: '11:30 AM',
-      location: 'Fortis Escorts, Okhla',
-      purpose: 'CardioSart HCT detailing session'
-    },
-    {
-      id: 'meet-2',
-      hcpName: 'Dr. Anita Desai',
-      specialty: 'Endocrinology',
-      time: '03:00 PM',
-      location: 'Video Call (Zoom)',
-      purpose: 'GliclaCare Phase III cardiovascular trial summary'
-    }
-  ];
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayMeetings = interactions.filter(i => i.date === todayStr);
 
-  const pendingFollowups = [
-    {
-      id: 'f-1',
-      hcpName: 'Dr. preeti Gupta',
-      action: 'Share digital copy of Safety Data Sheet via WhatsApp',
-      date: 'Due today'
-    },
-    {
-      id: 'f-2',
-      hcpName: 'Dr. Sunita Rao',
-      action: 'Deliver 50 more samples of Pediatrix Multi-V to clinic reception',
-      date: 'Due in 2 days'
-    }
-  ];
+  const mappedTodayMeetings = todayMeetings.map((meet) => {
+    const hcp = hcps.find(h => String(h.id) === String(meet.hcpId));
+    return {
+      id: meet.id,
+      hcpName: meet.hcpName,
+      specialty: hcp ? hcp.specialization : 'General',
+      time: meet.time || '12:00',
+      location: hcp ? hcp.hospital : 'Clinic',
+      purpose: meet.topicsDiscussed.join(', ') || 'Medical detailing visit',
+    };
+  });
+
+  // Extract pending follow-up actions from interactions
+  const pendingFollowups = interactions
+    .filter(i => i.followUpActions && i.followUpActions.trim())
+    .map((item, idx) => ({
+      id: `follow-${item.id}-${idx}`,
+      hcpName: item.hcpName,
+      action: item.followUpActions,
+      date: item.date === todayStr ? 'Due today' : `Date: ${item.date}`,
+    }))
+    .slice(0, 4);
+
+  if (isLoading && hcps.length === 0 && interactions.length === 0) {
+    return (
+      <div className="h-[70vh] w-full flex flex-col items-center justify-center gap-4">
+        <Loader2 className="h-10 w-10 text-brand-500 animate-spin" />
+        <p className="text-sm font-semibold text-slate-500">Syncing live CRM data from FastAPI server...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
       {/* Welcome banner */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-xl border border-slate-100 shadow-soft">
         <div>
-          <h2 className="text-xl font-bold text-slate-800">Welcome Back, Amit</h2>
-          <p className="text-xs text-slate-450 mt-1">Here is a summary of your medical representative activities and doctor relationships today.</p>
+          <h2 className="text-xl font-bold text-slate-800">Welcome Back, {userFirstName}</h2>
+          <p className="text-xs text-slate-455 text-slate-400 mt-1">Here is a summary of your medical representative activities and doctor relationships today.</p>
         </div>
         <Button
           onClick={() => navigate('/log-interaction')}
@@ -80,28 +109,25 @@ export const Dashboard: React.FC = () => {
           title="Total HCPs Managed"
           value={totalHcps}
           icon={<Users className="h-5 w-5 text-blue-650" />}
-          trend={{ value: 12, isPositive: true }}
-          subtitle="this month"
+          subtitle="registered in CRM"
         />
         <StatCard
           title="Interactions Logged"
           value={totalInteractions}
           icon={<FileText className="h-5 w-5 text-indigo-650" />}
-          trend={{ value: 8, isPositive: true }}
-          subtitle="this month"
+          subtitle="total logged visits"
         />
         <StatCard
-          title="Positive Sentiment"
-          value={`${positiveSentimentRate}%`}
-          icon={<Smile className="h-5 w-5 text-emerald-650" />}
-          trend={{ value: 4, isPositive: true }}
-          subtitle="average doctor vibe"
+          title="Today's Meetings"
+          value={mappedTodayMeetings.length}
+          icon={<Calendar className="h-5 w-5 text-emerald-650" />}
+          subtitle="scheduled for today"
         />
         <StatCard
-          title="Pending Followups"
-          value={pendingFollowups.length}
-          icon={<CheckSquare className="h-5 w-5 text-amber-650" />}
-          subtitle="actions required"
+          title="AI Notes Processed"
+          value={processedNotesCount}
+          icon={<Sparkles className="h-5 w-5 text-amber-650" />}
+          subtitle="via AI Copilot"
         />
       </div>
 
@@ -116,36 +142,44 @@ export const Dashboard: React.FC = () => {
                 <Calendar className="h-4.5 w-4.5 text-slate-400" />
                 <h3 className="text-sm font-bold text-slate-800">Today's Detailed Detailing Visits</h3>
               </div>
-              <span className="text-xs font-semibold text-slate-400">2 Meetings Scheduled</span>
+              <span className="text-xs font-semibold text-slate-400">
+                {mappedTodayMeetings.length} {mappedTodayMeetings.length === 1 ? 'Meeting' : 'Meetings'} Scheduled
+              </span>
             </div>
 
             <div className="flex flex-col gap-3">
-              {todayMeetings.map((meet) => (
-                <div
-                  key={meet.id}
-                  className="flex items-start justify-between p-4 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors bg-slate-50/20"
-                >
-                  <div className="flex items-start gap-3">
-                    <Avatar name={meet.hcpName} size="md" />
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-850 text-slate-800">{meet.hcpName}</h4>
-                      <p className="text-[11px] font-semibold text-brand-500">{meet.specialty}</p>
-                      <p className="text-xs text-slate-500 mt-1">{meet.purpose}</p>
+              {mappedTodayMeetings.length > 0 ? (
+                mappedTodayMeetings.map((meet) => (
+                  <div
+                    key={meet.id}
+                    className="flex items-start justify-between p-4 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors bg-slate-50/20"
+                  >
+                    <div className="flex items-start gap-3">
+                      <Avatar name={meet.hcpName} size="md" />
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-850 text-slate-800">{meet.hcpName}</h4>
+                        <p className="text-[11px] font-semibold text-brand-500">{meet.specialty}</p>
+                        <p className="text-xs text-slate-500 mt-1">{meet.purpose}</p>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="text-xs font-bold text-slate-800 block">{meet.time}</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">{meet.location}</span>
                     </div>
                   </div>
-
-                  <div className="text-right shrink-0">
-                    <span className="text-xs font-bold text-slate-800 block">{meet.time}</span>
-                    <span className="text-[10px] text-slate-400 block mt-0.5">{meet.location}</span>
-                  </div>
+                ))
+              ) : (
+                <div className="py-8 text-center text-slate-400 select-none text-xs font-medium">
+                  No detailing visits logged for today yet.
                 </div>
-              ))}
+              )}
             </div>
           </Card>
 
           {/* Recent Interactions Timeline */}
           <Card className="p-6">
-            <div className="flex items-center justify-between border-b border-slate-50 pb-4 mb-5 select-none">
+            <div className="flex items-center justify-between border-b border-slate-55 border-slate-100 pb-4 mb-5 select-none">
               <div className="flex items-center gap-2">
                 <Activity className="h-4.5 w-4.5 text-slate-400" />
                 <h3 className="text-sm font-bold text-slate-800">Recent Interactions Activity</h3>
@@ -159,13 +193,19 @@ export const Dashboard: React.FC = () => {
             </div>
 
             <div className="flex flex-col">
-              {interactions.slice(0, 3).map((item) => (
-                <TimelineItem
-                  key={item.id}
-                  interaction={item}
-                  onClickDetails={() => navigate(`/hcp/${item.hcpId}`)}
-                />
-              ))}
+              {interactions.length > 0 ? (
+                interactions.slice(0, 3).map((item) => (
+                  <TimelineItem
+                    key={item.id}
+                    interaction={item}
+                    onClickDetails={() => handleViewDetails(item.id)}
+                  />
+                ))
+              ) : (
+                <div className="py-8 text-center text-slate-400 select-none text-xs font-medium">
+                  No interactions recorded yet. Click "New Interaction" to log one.
+                </div>
+              )}
             </div>
           </Card>
         </div>
@@ -180,22 +220,28 @@ export const Dashboard: React.FC = () => {
             </h3>
 
             <div className="flex flex-col gap-3">
-              {pendingFollowups.map((item) => (
-                <div
-                  key={item.id}
-                  className="p-3.5 rounded-lg border border-slate-100 bg-amber-50/10 flex flex-col gap-1.5"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-800">{item.hcpName}</span>
-                    <Badge variant="warning" className="text-[9px] px-1.5 py-0.5">
-                      {item.date}
-                    </Badge>
+              {pendingFollowups.length > 0 ? (
+                pendingFollowups.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3.5 rounded-lg border border-slate-100 bg-amber-50/10 flex flex-col gap-1.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800">{item.hcpName}</span>
+                      <Badge variant="warning" className="text-[9px] px-1.5 py-0.5">
+                        {item.date}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-slate-555 text-slate-550 text-slate-500 leading-relaxed">
+                      {item.action}
+                    </p>
                   </div>
-                  <p className="text-xs text-slate-555 text-slate-500 leading-relaxed">
-                    {item.action}
-                  </p>
+                ))
+              ) : (
+                <div className="py-8 text-center text-slate-450 text-slate-400 text-xs select-none">
+                  No pending follow-up actions.
                 </div>
-              ))}
+              )}
             </div>
           </Card>
 
@@ -207,28 +253,43 @@ export const Dashboard: React.FC = () => {
             </h3>
 
             <div className="flex flex-col gap-3">
-              {hcps.slice(0, 4).map((doc) => (
-                <div
-                  key={doc.id}
-                  onClick={() => navigate(`/hcp/${doc.id}`)}
-                  className="flex items-center justify-between p-2.5 rounded-lg hover:bg-slate-55 hover:bg-slate-50 cursor-pointer transition-colors"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Avatar name={doc.name} size="sm" />
-                    <div className="min-w-0">
-                      <span className="text-xs font-bold text-slate-800 block truncate">{doc.name}</span>
-                      <span className="text-[10px] text-slate-400 block truncate">{doc.specialization} • {doc.hospital}</span>
+              {hcps.length > 0 ? (
+                hcps.slice(0, 4).map((doc) => (
+                  <div
+                    key={doc.id}
+                    onClick={() => navigate(`/hcp/${doc.id}`)}
+                    className="flex items-center justify-between p-2.5 rounded-lg hover:bg-slate-55 hover:bg-slate-50 cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Avatar name={doc.name} size="sm" />
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-slate-800 block truncate">{doc.name}</span>
+                        <span className="text-[10px] text-slate-400 block truncate">{doc.specialization} • {doc.hospital}</span>
+                      </div>
                     </div>
+                    <Badge variant="success" className="text-[9px] shrink-0">
+                      {doc.status}
+                    </Badge>
                   </div>
-                  <Badge variant="success" className="text-[9px] shrink-0">
-                    {doc.status}
-                  </Badge>
+                ))
+              ) : (
+                <div className="py-8 text-center text-slate-400 select-none text-xs font-medium">
+                  No doctors managed yet.
                 </div>
-              ))}
+              )}
             </div>
           </Card>
         </div>
       </div>
+
+      <InteractionDetailModal
+        isOpen={isDetailsModalOpen}
+        onClose={() => {
+          setIsDetailsModalOpen(false);
+          setSelectedDetailsInt(null);
+        }}
+        interaction={selectedDetailsInt}
+      />
     </div>
   );
 };

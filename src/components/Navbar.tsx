@@ -4,6 +4,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { Bell, Search, LogOut, Settings as SettingsIcon, User, Check, Trash2 } from 'lucide-react';
 import { RootState } from '../redux/store';
 import { markAllNotificationsRead, clearNotifications } from '../redux/slices/uiSlice';
+import { clearAuth, getDisplayNameFromEmail } from '../redux/slices/authSlice';
 import Avatar from './Avatar';
 import Badge from './Badge';
 
@@ -12,7 +13,11 @@ export const Navbar: React.FC = () => {
   const location = useLocation();
   const dispatch = useDispatch();
 
-  const { notifications, settings } = useSelector((state: RootState) => state.ui);
+  const { notifications } = useSelector((state: RootState) => state.ui);
+  const user = useSelector((state: RootState) => state.auth.user);
+
+  const userEmail = user?.email || 'operator@pharmaco.com';
+  const userDisplayName = user ? getDisplayNameFromEmail(user.email) : 'Sales Executive';
   
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -51,7 +56,7 @@ export const Navbar: React.FC = () => {
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-100 px-6 flex items-center justify-between sticky top-0 z-30 select-none">
+    <header className="h-16 shrink-0 bg-white border-b border-slate-100 px-6 flex items-center justify-between sticky top-0 z-30 select-none">
       {/* Page Title & Context */}
       <div>
         <h1 className="text-base font-bold text-slate-800 tracking-tight leading-none">
@@ -149,10 +154,10 @@ export const Navbar: React.FC = () => {
             onClick={() => setShowProfileDropdown(!showProfileDropdown)}
             className="flex items-center gap-2.5 cursor-pointer hover:opacity-90 select-none"
           >
-            <Avatar name={settings.repName} size="sm" />
+            <Avatar name={userDisplayName} size="sm" />
             <div className="hidden lg:flex flex-col text-left">
               <span className="text-xs font-bold text-slate-800 leading-none">
-                {settings.repName}
+                {userDisplayName}
               </span>
               <span className="text-[10px] font-semibold text-slate-400 mt-0.5 uppercase tracking-wide">
                 Sales Executive
@@ -164,10 +169,10 @@ export const Navbar: React.FC = () => {
             <div className="absolute right-0 mt-2.5 w-48 bg-white border border-slate-100 rounded-xl shadow-premium z-50 py-1.5 flex flex-col">
               <div className="px-4 py-2 border-b border-slate-100 mb-1 lg:hidden">
                 <span className="text-xs font-bold text-slate-800 block truncate">
-                  {settings.repName}
+                  {userDisplayName}
                 </span>
                 <span className="text-[10px] text-slate-400 block truncate">
-                  {settings.repEmail}
+                  {userEmail}
                 </span>
               </div>
 
@@ -197,6 +202,8 @@ export const Navbar: React.FC = () => {
 
               <button
                 onClick={() => {
+                  localStorage.removeItem('token');
+                  dispatch(clearAuth());
                   navigate('/'); // redirect to Login
                   setShowProfileDropdown(false);
                 }}
