@@ -480,6 +480,6 @@ Schedule Next Visit
 
 MCA Student | Full Stack Developer | AI Enthusiast
 
-GitHub: https://github.com/your-username
+GitHub: git@github.com:Rutvikp-07/Rutvikp-07.git
 
-LinkedIn: https://linkedin.com/in/your-profile
+LinkedIn:(https://www.linkedin.com/in/rutvik-parit-130b8132a?utm_source=share_via&utm_content=profile&utm_medium=member_ios)
