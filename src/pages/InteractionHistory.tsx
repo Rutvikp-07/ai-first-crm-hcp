@@ -1,0 +1,136 @@
+import React from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { Search, Filter, History, Calendar, FileText } from 'lucide-react';
+import { RootState } from '../redux/store';
+import {
+  setSearchQuery,
+  setSentimentFilter,
+  setTypeFilter
+} from '../redux/slices/interactionSlice';
+import TimelineItem from '../components/TimelineItem';
+import SearchInput from '../components/SearchInput';
+import Card from '../components/Card';
+import Badge from '../components/Badge';
+
+export const InteractionHistory: React.FC = () => {
+  const dispatch = useDispatch();
+
+  const { list: interactions, filters } = useSelector((state: RootState) => state.interaction);
+
+  const sentimentFilters = ['All', 'Positive', 'Neutral', 'Negative'];
+  const typeFilters = ['All', 'In-Person', 'Video Call', 'Phone Call', 'Email'];
+
+  // Apply filters
+  const filteredInteractions = interactions.filter((item) => {
+    const matchesSearch =
+      item.hcpName.toLowerCase().includes(filters.searchQuery.toLowerCase()) ||
+      item.outcome.toLowerCase().includes(filters.searchQuery.toLowerCase()) ||
+      item.topicsDiscussed.some((t) => t.toLowerCase().includes(filters.searchQuery.toLowerCase()));
+
+    const matchesSentiment =
+      filters.sentiment === 'All' || item.sentiment === filters.sentiment;
+
+    const matchesType = filters.type === 'All' || item.type === filters.type;
+
+    return matchesSearch && matchesSentiment && matchesType;
+  });
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Top search & title */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <SearchInput
+          value={filters.searchQuery}
+          onChangeValue={(val) => dispatch(setSearchQuery(val))}
+          placeholder="Search by doctor, topics, outcome summary..."
+          containerClassName="max-w-md w-full"
+        />
+        
+        <span className="text-xs font-semibold text-slate-400 select-none self-end md:self-auto">
+          {filteredInteractions.length} Interactions Found
+        </span>
+      </div>
+
+      {/* Filter panel */}
+      <Card className="p-4 flex flex-wrap gap-4 items-center bg-slate-55 bg-slate-50/40">
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-550 text-slate-500 uppercase tracking-wide select-none">
+          <Filter className="h-4 w-4" />
+          Filter:
+        </div>
+
+        {/* Type Select */}
+        <div className="flex-grow sm:flex-initial min-w-[140px] max-w-[200px]">
+          <select
+            value={filters.type}
+            onChange={(e) => dispatch(setTypeFilter(e.target.value))}
+            className="w-full bg-white border border-slate-200 text-xs px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            {typeFilters.map((type) => (
+              <option key={type} value={type}>
+                Type: {type}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Sentiment Select */}
+        <div className="flex-grow sm:flex-initial min-w-[140px] max-w-[200px]">
+          <select
+            value={filters.sentiment}
+            onChange={(e) => dispatch(setSentimentFilter(e.target.value))}
+            className="w-full bg-white border border-slate-200 text-xs px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            {sentimentFilters.map((s) => (
+              <option key={s} value={s}>
+                Sentiment: {s}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Clear trigger */}
+        {(filters.searchQuery || filters.type !== 'All' || filters.sentiment !== 'All') && (
+          <button
+            onClick={() => {
+              dispatch(setSearchQuery(''));
+              dispatch(setTypeFilter('All'));
+              dispatch(setSentimentFilter('All'));
+            }}
+            className="text-xs font-bold text-slate-500 hover:text-brand-500 transition-colors"
+          >
+            Clear Filters
+          </button>
+        )}
+      </Card>
+
+      {/* Timeline wrapper list */}
+      <Card className="p-6">
+        <h3 className="text-sm font-bold text-slate-800 border-b border-slate-55 border-slate-100 pb-4 mb-6 flex items-center gap-2 select-none">
+          <History className="h-4.5 w-4.5 text-slate-400" />
+          All Interactions Archive
+        </h3>
+
+        {filteredInteractions.length > 0 ? (
+          <div className="flex flex-col">
+            {filteredInteractions.map((item) => (
+              <TimelineItem
+                key={item.id}
+                interaction={item}
+                onClickDetails={() => {}}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="py-16 text-center text-slate-400 select-none">
+            <div className="flex flex-col items-center gap-2.5">
+              <FileText className="h-8 w-8 text-slate-300" />
+              <span className="text-xs font-semibold">No interactions match your search criteria.</span>
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+export default InteractionHistory;
